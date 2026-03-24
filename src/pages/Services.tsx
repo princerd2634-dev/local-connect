@@ -1,13 +1,16 @@
-import { useState, useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useState, useMemo, useEffect } from "react";
+import { useSearchParams, Link } from "react-router-dom";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import ServiceCard from "@/components/ServiceCard";
-import { mockServices } from "@/data/mockServices";
+import { supabase } from "@/integrations/supabase/client";
 import { Search, SlidersHorizontal, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import type { Tables } from "@/integrations/supabase/types";
 
 const allCategories = ["All", "Electrician", "Plumber", "Tutor", "Delivery", "Painter", "Carpenter", "Salon", "Security"];
+
+type Service = Tables<"services">;
 
 const Services = () => {
   const [searchParams] = useSearchParams();
@@ -18,15 +21,27 @@ const Services = () => {
   const [selectedCategory, setSelectedCategory] = useState(initialCat.charAt(0).toUpperCase() + initialCat.slice(1));
   const [location, setLocation] = useState(searchParams.get("location") || "");
   const [showFilters, setShowFilters] = useState(false);
+  const [services, setServices] = useState<Service[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetch = async () => {
+      setLoading(true);
+      const { data } = await supabase.from("services").select("*").eq("is_active", true).order("created_at", { ascending: false });
+      setServices(data || []);
+      setLoading(false);
+    };
+    fetch();
+  }, []);
 
   const filtered = useMemo(() => {
-    return mockServices.filter((s) => {
-      const matchesQ = !query || s.name.toLowerCase().includes(query.toLowerCase()) || s.category.toLowerCase().includes(query.toLowerCase()) || s.description.toLowerCase().includes(query.toLowerCase());
+    return services.filter((s) => {
+      const matchesQ = !query || s.name.toLowerCase().includes(query.toLowerCase()) || s.category.toLowerCase().includes(query.toLowerCase()) || (s.description || "").toLowerCase().includes(query.toLowerCase());
       const matchesCat = selectedCategory === "All" || s.category === selectedCategory;
-      const matchesLoc = !location || s.location.toLowerCase().includes(location.toLowerCase());
+      const matchesLoc = !location || (s.location || "").toLowerCase().includes(location.toLowerCase());
       return matchesQ && matchesCat && matchesLoc;
     });
-  }, [query, selectedCategory, location]);
+  }, [query, selectedCategory, location, services]);
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -78,12 +93,26 @@ const Services = () => {
           ))}
         </div>
 
-        {filtered.length > 0 ? (
+        {loading ? (
+          <div className="flex justify-center py-20"><p className="text-muted-foreground">Loading services...</p></div>
+        ) : filtered.length > 0 ? (
           <>
             <p className="mb-4 text-sm text-muted-foreground">{filtered.length} service{filtered.length > 1 ? "s" : ""} found</p>
             <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               {filtered.map((s) => (
-                <ServiceCard key={s.name} {...s} />
+                <Link key={s.id} to={`/services/${s.id}`}>
+                  <ServiceCard
+                    name={s.name}
+                    category={s.category}
+                    rating={0}
+                    reviews={0}
+                    location={s.location || ""}
+                    description={s.description || ""}
+                    price={s.price || ""}
+                    phone={s.phone || ""}
+                    image={s.image_url || "https://images.unsplash.com/photo-1581578731548-c64695cc6952?w=400&h=300&fit=crop"}
+                  />
+                </Link>
               ))}
             </div>
           </>
